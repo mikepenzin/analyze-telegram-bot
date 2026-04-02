@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Bot, webhookCallback } from "grammy";
+import { Bot, webhookCallback, InlineKeyboard } from "grammy";
 import { createServer } from "http";
 import { classifyAndForward } from "./handler.js";
 
@@ -8,36 +8,52 @@ if (!token) throw new Error("TELEGRAM_BOT_TOKEN is not set");
 
 const bot = new Bot(token);
 
+// ─── Register command list (shows in the "/" menu in Telegram) ────────────────
+
+await bot.api.setMyCommands([
+  { command: "analyze", description: "Analyze a stock — /analyze AAPL" },
+  { command: "clear", description: "Clear current session" },
+  { command: "help", description: "Show help" },
+]);
+
+// ─── Keyboards ────────────────────────────────────────────────────────────────
+
+const MAIN_KEYBOARD = new InlineKeyboard()
+  .text("📊 Analyze a Stock", "analyze_prompt")
+  .text("❓ Help", "help_prompt");
+
+const SYMBOL_PROMPT_TEXT =
+  "Enter the stock symbol you want to analyze (e.g. *AAPL*, *MSFT*, *SPY*):";
+
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 bot.command("start", async (ctx) => {
   await ctx.reply(
-    `👋 Welcome to the Stock Analysis Bot!\n\n` +
-      `*Commands:*\n` +
-      `/analyze SYMBOL — start analysis (e.g. /analyze AAPL)\n` +
-      `/clear — clear current session\n` +
-      `/help — show this message\n\n` +
-      `After analyzing a stock, you can ask follow-up questions in plain text.`,
-    { parse_mode: "Markdown" }
+    `👋 *Welcome to the Stock Analysis Bot!*\n\n` +
+      `Get AI-powered technical analysis with charts, indicators, and follow-up Q&A for any US stock or ETF.\n\n` +
+      `Tap a button below or type */analyze SYMBOL* to get started.`,
+    { parse_mode: "Markdown", reply_markup: MAIN_KEYBOARD }
   );
 });
 
 bot.command("help", async (ctx) => {
   await ctx.reply(
     `*How to use:*\n\n` +
-      `1. /analyze AAPL — get full technical analysis\n` +
-      `2. Ask follow-ups: "what are support levels?"\n` +
-      `3. "show weekly" — switch timeframe\n` +
-      `4. /clear — start fresh\n\n` +
+      `1. Tap *📊 Analyze a Stock* or type /analyze AAPL\n` +
+      `2. Ask follow-up questions in plain text:\n` +
+      `   • "What are the key support levels?"\n` +
+      `   • "Do you see a cup and handle?"\n` +
+      `   • "Show weekly"\n` +
+      `3. /clear — start a fresh session\n\n` +
       `_Supports US stocks and ETFs._`,
-    { parse_mode: "Markdown" }
+    { parse_mode: "Markdown", reply_markup: MAIN_KEYBOARD }
   );
 });
 
 bot.command("clear", async (ctx) => {
-  // Notify API to mark session as closed — for now just confirm to user
   await ctx.reply(
-    "✅ Session cleared. Use /analyze SYMBOL to start a new analysis."
+    "✅ Session cleared. Use /analyze SYMBOL or tap the button below to start a new analysis.",
+    { reply_markup: MAIN_KEYBOARD }
   );
 });
 
@@ -45,14 +61,13 @@ bot.command("analyze", async (ctx) => {
   const args = ctx.match?.trim().toUpperCase();
 
   if (!args) {
-    await ctx.reply(
-      "Please provide a symbol. Example: /analyze AAPL",
-      { parse_mode: "Markdown" }
-    );
+    await ctx.reply(SYMBOL_PROMPT_TEXT, {
+      parse_mode: "Markdown",
+      reply_markup: { force_reply: true, input_field_placeholder: "AAPL" },
+    });
     return;
   }
 
-  // Basic symbol validation — 1-10 uppercase alphanumeric chars
   if (!/^[A-Z0-9.^-]{1,10}$/.test(args)) {
     await ctx.reply("❌ Invalid symbol format. Use ticker symbols like AAPL, MSFT, SPY.");
     return;
@@ -61,13 +76,53 @@ bot.command("analyze", async (ctx) => {
   await classifyAndForward(ctx, { type: "new_analysis", symbol: args });
 });
 
-// ─── Free-text messages (follow-ups) ─────────────────────────────────────────
+// ─── Inline keyboard callbacks ────────────────────────────────────────────────
+
+bot.callbackQuery("analyze_prompt", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.reply(SYMBOL_PROMPT_TEXT, {
+    parse_mode: "Markdown",
+    reply_markup: { force_reply: true, input_field_placeholder: "AAPL" },
+  });
+});
+
+bot.callbackQuery("help_prompt", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.reply(
+    `*How to use:*\n\n` +
+      `1. Tap *📊 Analyze a Stock* or type /analyze AAPL\n` +
+      `2. Ask follow-up questions in plain text:\n` +
+      `   • "What are the key support levels?"\n` +
+      `   • "Do you see a cup and handle?"\n` +
+      `   • "Show weekly"\n` +
+      `3. /clear — start a fresh session\n\n` +
+      `_Supports US stocks and ETFs._`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+// ─── Free-text messages (follow-ups + ForceReply symbol entry) ────────────────
 
 bot.on("message:text", async (ctx) => {
-  const text = ctx.message.text;
+  const text = ctx.message.text.trim();
 
-  // Ignore if it's an unhandled command
+  // Ignore unhandled commands
   if (text.startsWith("/")) return;
+
+  // Detect replies to our ForceReply symbol prompt and treat as new analysis
+  const replyTo = ctx.message.reply_to_message?.text;
+  if (replyTo?.includes("Enter the stock symbol")) {
+    const symbol = text.toUpperCase();
+    if (!/^[A-Z0-9.^-]{1,10}$/.test(symbol)) {
+      await ctx.reply(
+        "❌ Invalid symbol format. Use ticker symbols like AAPL, MSFT, SPY.",
+        { reply_markup: MAIN_KEYBOARD }
+      );
+      return;
+    }
+    await classifyAndForward(ctx, { type: "new_analysis", symbol });
+    return;
+  }
 
   await classifyAndForward(ctx, { type: "follow_up", message: text });
 });
@@ -104,7 +159,7 @@ if (webhookUrl) {
   // Development: long-polling
   console.log("Starting bot in long-polling mode...");
   bot.start({
-    allowed_updates: ["message"],
+    allowed_updates: ["message", "callback_query"],
     onStart: (botInfo) => {
       console.log(`Bot @${botInfo.username} is now polling for updates`);
     },
