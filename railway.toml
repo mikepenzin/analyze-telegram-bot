@@ -1,0 +1,33 @@
+# Railway configuration for each service
+# Deploy each app as a separate Railway service pointing to its Dockerfile.
+#
+# Service: api
+#   Build: Dockerfile at apps/api/Dockerfile
+#   Root dir: / (monorepo root, so COPY can access all packages)
+#   Start: node apps/api/dist/index.js
+#   Port: 3001
+#   Env vars: DATABASE_URL, REDIS_URL, INTERNAL_API_SECRET, NODE_ENV=production
+#
+# Service: bot
+#   Build: Dockerfile at apps/bot/Dockerfile
+#   Root dir: /
+#   Start: node apps/bot/dist/index.js
+#   Port: 3002
+#   Env vars: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_URL (set to api service URL),
+#             INTERNAL_API_SECRET, API_URL (internal Railway URL of api service), NODE_ENV=production
+#
+# Service: worker
+#   Build: Dockerfile at apps/worker/Dockerfile
+#   Root dir: /
+#   Start: node apps/worker/dist/index.js
+#   No port needed (background process)
+#   Env vars: DATABASE_URL, REDIS_URL, TELEGRAM_BOT_TOKEN, OPENAI_API_KEY,
+#             OPENAI_MODEL, OPENAI_FOLLOWUP_MODEL, NODE_ENV=production
+
+[build]
+  builder = "dockerfile"
+
+[deploy]
+  healthcheckPath = "/health"
+  restartPolicyType = "on_failure"
+  restartPolicyMaxRetries = 3

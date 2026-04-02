@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String            @id @default(cuid())
+  telegramId String            @unique @map("telegram_id")
+  username   String?
+  isDemo     Boolean           @default(false) @map("is_demo")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+  sessions   AnalysisSession[]
+
+  @@map("users")
+}
+
+model AnalysisSession {
+  id             String            @id @default(cuid())
+  userId         String            @map("user_id")
+  user           User              @relation(fields: [userId], references: [id])
+  activeSymbol   String?           @map("active_symbol")
+  status         SessionStatus     @default(active)
+  lastAnalysisId String?           @map("last_analysis_id")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  messages       AnalysisMessage[]
+  analyses       Analysis[]
+
+  @@map("analysis_sessions")
+}
+
+model AnalysisMessage {
+  id          String          @id @default(cuid())
+  sessionId   String          @map("session_id")
+  session     AnalysisSession @relation(fields: [sessionId], references: [id])
+  role        MessageRole
+  contentJson Json            @map("content_json")
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  @@map("analysis_messages")
+}
+
+model Analysis {
+  id          String          @id @default(cuid())
+  sessionId   String          @map("session_id")
+  session     AnalysisSession @relation(fields: [sessionId], references: [id])
+  symbol      String
+  resultJson  Json?           @map("result_json")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  snapshots   TASnapshot[]
+  charts      ChartArtifact[]
+
+  @@map("analyses")
+}
+
+model TASnapshot {
+  id           String   @id @default(cuid())
+  analysisId   String   @map("analysis_id")
+  analysis     Analysis @relation(fields: [analysisId], references: [id])
+  snapshotJson Json     @map("snapshot_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("ta_snapshots")
+}
+
+model ChartArtifact {
+  id         String   @id @default(cuid())
+  analysisId String   @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id])
+  imagePath  String   @map("image_path")
+  telegramFileId String? @map("telegram_file_id")
+  timeframe  String
+  width      Int
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("chart_artifacts")
+}
+
+enum SessionStatus {
+  active
+  idle
+  closed
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}

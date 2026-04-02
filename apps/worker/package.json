@@ -1,0 +1,29 @@
+{
+  "name": "@repo/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/chart": "workspace:*",
+    "@repo/db": "workspace:*",
+    "@repo/llm": "workspace:*",
+    "@repo/market-data": "workspace:*",
+    "@repo/shared": "workspace:*",
+    "@repo/ta-engine": "workspace:*",
+    "bullmq": "^5.39.1",
+    "dotenv": "^17.4.0",
+    "grammy": "^1.31.0",
+    "ioredis": "^5.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
